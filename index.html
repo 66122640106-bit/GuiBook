@@ -494,13 +494,13 @@
             statusEl.className = 'text-xs font-medium text-amber-500 mr-2 flex items-center gap-1';
 
             try {
-                const { error } = await supabaseClient // [แก้ไขที่นี่] เปลี่ยนเป็น supabaseClient
+                // เปลี่ยนจาก update เป็น upsert เพื่อให้สร้างข้อมูลใหม่ถ้ายังไม่มี id = 1
+                const { error } = await supabaseClient
                     .from('app_data')
-                    .update({ content_json: manualsList })
-                    .eq('id', 1);
+                    .upsert({ id: 1, content_json: manualsList });
                 
                 if (error) {
-                    console.error('Supabase save error:', error);
+                    console.error('Supabase save error:', error.message, error.details);
                     statusEl.innerHTML = '<i class="ph-bold ph-warning-circle"></i> ซิงค์ไม่สำเร็จ';
                     statusEl.className = 'text-xs font-medium text-red-500 mr-2 flex items-center gap-1';
                 } else {
