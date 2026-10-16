@@ -460,7 +460,9 @@
         // ---------- Supabase Init ----------
         const SUPABASE_URL = 'https://tuptdwctpcqwamjyyafn.supabase.co';
         const SUPABASE_KEY = 'sb_publishable_sTCTqScYNv-OpQ0UqQUzWw_x99irmqp';
-        const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+        
+        // [แก้ไขที่นี่] เปลี่ยนจาก const supabase เป็น const supabaseClient เพื่อไม่ให้ชื่อชนกับ Script ของ CDN
+        const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
         // ---------- Data ----------
         const STORAGE_KEY = 'it_manuals_v2';
@@ -492,7 +494,7 @@
             statusEl.className = 'text-xs font-medium text-amber-500 mr-2 flex items-center gap-1';
 
             try {
-                const { error } = await supabase
+                const { error } = await supabaseClient // [แก้ไขที่นี่] เปลี่ยนเป็น supabaseClient
                     .from('app_data')
                     .update({ content_json: manualsList })
                     .eq('id', 1);
@@ -1061,7 +1063,7 @@
                 const statusEl = document.getElementById('sync-status');
                 statusEl.innerHTML = '<i class="ph-bold ph-spinner animate-spin"></i> กำลังอัปเดต...';
                 
-                const { data, error } = await supabase
+                const { data, error } = await supabaseClient // [แก้ไขที่นี่] เปลี่ยนเป็น supabaseClient
                     .from('app_data')
                     .select('content_json')
                     .eq('id', 1)
