@@ -494,21 +494,25 @@
             statusEl.className = 'text-xs font-medium text-amber-500 mr-2 flex items-center gap-1';
 
             try {
-                // เปลี่ยนจาก update เป็น upsert เพื่อให้สร้างข้อมูลใหม่ถ้ายังไม่มี id = 1
-                const { error } = await supabaseClient
+                // ใช้รูปแบบ Array [{...}] และเพิ่ม onConflict เพื่อป้องกันข้อผิดพลาดในการ upsert ของ Supabase
+                const { data, error } = await supabaseClient
                     .from('app_data')
-                    .upsert({ id: 1, content_json: manualsList });
+                    .upsert([{ id: 1, content_json: manualsList }], { onConflict: 'id' })
+                    .select();
                 
                 if (error) {
                     console.error('Supabase save error:', error.message, error.details);
-                    statusEl.innerHTML = '<i class="ph-bold ph-warning-circle"></i> ซิงค์ไม่สำเร็จ';
+                    statusEl.innerHTML = '<i class="ph-bold ph-warning-circle"></i> ซิงค์ไม่สำเร็จ (เช็ค RLS)';
                     statusEl.className = 'text-xs font-medium text-red-500 mr-2 flex items-center gap-1';
+                    showMessage('ซิงค์ข้อมูลไม่สำเร็จ อาจติดสิทธิ์ RLS บน Database', true);
                 } else {
                     statusEl.innerHTML = '<i class="ph-bold ph-cloud-check"></i> ซิงค์แล้ว';
                     statusEl.className = 'text-xs font-medium text-emerald-500 mr-2 flex items-center gap-1';
                 }
             } catch (e) {
                 console.error('Network or sync error:', e);
+                statusEl.innerHTML = '<i class="ph-bold ph-warning-circle"></i> ขัดข้อง';
+                statusEl.className = 'text-xs font-medium text-red-500 mr-2 flex items-center gap-1';
             }
         }
 
@@ -1063,13 +1067,18 @@
                 const statusEl = document.getElementById('sync-status');
                 statusEl.innerHTML = '<i class="ph-bold ph-spinner animate-spin"></i> กำลังอัปเดต...';
                 
-                const { data, error } = await supabaseClient // [แก้ไขที่นี่] เปลี่ยนเป็น supabaseClient
+                // ใช้ maybeSingle() แทน single() จะไม่แจ้ง Error (PGRST116) หากตารางยังว่างอยู่
+                const { data, error } = await supabaseClient
                     .from('app_data')
                     .select('content_json')
                     .eq('id', 1)
-                    .single();
+                    .maybeSingle();
                 
-                if (data && data.content_json) {
+                if (error) { 
+                    console.error('Supabase load error:', error);
+                    statusEl.innerHTML = '<i class="ph-bold ph-warning-circle"></i> ออฟไลน์ (เช็ค RLS)';
+                    statusEl.className = 'text-xs font-medium text-red-500 mr-2 flex items-center gap-1';
+                } else if (data && data.content_json) {
                     // ถ้าดึงข้อมูลจากเน็ตสำเร็จ เอามาทับของเดิม และแสดงผลใหม่
                     manualsList = data.content_json;
                     localStorage.setItem(STORAGE_KEY, JSON.stringify(manualsList));
@@ -1077,16 +1086,18 @@
                     
                     statusEl.innerHTML = '<i class="ph-bold ph-cloud-check"></i> ซิงค์แล้ว';
                     statusEl.className = 'text-xs font-medium text-emerald-500 mr-2 flex items-center gap-1';
-                } else if (error && error.code !== 'PGRST116') { 
-                    // กรณี Error ยกเว้นเคสที่ยังไม่มีข้อมูลแถวที่ 1
-                    console.error('Supabase load error:', error);
-                    statusEl.innerHTML = '<i class="ph-bold ph-warning-circle"></i> ข้อมูลออฟไลน์';
-                    statusEl.className = 'text-xs font-medium text-amber-500 mr-2 flex items-center gap-1';
                 } else {
-                    statusEl.innerHTML = '<i class="ph-bold ph-cloud-check"></i> ซิงค์แล้ว';
+                    // กรณีระบบปกติ แต่เพิ่งสร้าง Table เสร็จและยังไม่มีข้อมูลใดๆ ใน Database
+                    statusEl.innerHTML = '<i class="ph-bold ph-cloud-check"></i> พร้อมใช้งาน';
+                    statusEl.className = 'text-xs font-medium text-emerald-500 mr-2 flex items-center gap-1';
                 }
             } catch (err) {
                 console.error('Network Error:', err);
+                const statusEl = document.getElementById('sync-status');
+                if (statusEl) {
+                    statusEl.innerHTML = '<i class="ph-bold ph-warning-circle"></i> เชื่อมต่อล้มเหลว';
+                    statusEl.className = 'text-xs font-medium text-red-500 mr-2 flex items-center gap-1';
+                }
             }
         }
 
