@@ -100,6 +100,7 @@
                     </div>
                 </div>
                 <div class="hidden sm:flex items-center gap-3">
+                    <span id="sync-status" class="text-xs font-medium text-stone-400 mr-2 flex items-center gap-1"><i class="ph-bold ph-cloud-check"></i> ซิงค์แล้ว</span>
                     <button onclick="openAddModal()" class="bg-primary-600 hover:bg-primary-700 text-white px-4 py-2 rounded-full text-sm font-semibold transition-all shadow-glow hover:-translate-y-0.5 flex items-center gap-2">
                         <i class="ph-bold ph-plus"></i> สร้างคู่มือ
                     </button>
@@ -347,7 +348,7 @@
     <footer class="border-t border-primary-100 bg-white/60 mt-16">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 flex flex-col sm:flex-row items-center justify-between gap-2 text-sm text-stone-500">
             <p class="flex items-center gap-2"><i class="ph-fill ph-hard-drives text-primary-500"></i> IT Guide — ศูนย์รวมคู่มือ IT สำหรับพนักงาน</p>
-            <p>ข้อมูลถูกบันทึกไว้ในเบราว์เซอร์ของคุณ</p>
+            <p class="flex items-center gap-1"><i class="ph-fill ph-database text-primary-400"></i> ข้อมูลซิงค์กับ Supabase Cloud</p>
         </div>
     </footer>
 
@@ -452,20 +453,19 @@
         <span id="message-text"></span>
     </div>
 
+    <!-- 1. นำเข้า SDK ของ Supabase -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
     <script>
+        // ---------- Supabase Init ----------
+        const SUPABASE_URL = 'https://tuptdwctpcqwamjyyafn.supabase.co';
+        const SUPABASE_KEY = 'sb_publishable_sTCTqScYNv-OpQ0UqQUzWw_x99irmqp';
+        const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
         // ---------- Data ----------
         const STORAGE_KEY = 'it_manuals_v2';
-
-        function loadManuals() {
-            try {
-                const raw = JSON.parse(localStorage.getItem(STORAGE_KEY));
-                return Array.isArray(raw) ? raw : [];
-            } catch (e) {
-                return [];
-            }
-        }
-
-        let manualsList = loadManuals().map(m => ({ ...m, contents: m.contents || [] }));
+        let manualsList = [];
+        
         let currentManualId = null;
         let currentContentId = null;
         let editingBlockId = null;
@@ -473,9 +473,50 @@
         let sortDir = 'desc';
         let tempSelectedImages = [];
 
+        // ฟังก์ชันโหลดข้อมูลเก่าจากในเครื่อง (ช่วยให้เว็บเปิดเร็ว)
+        function loadLocalData() {
+            try {
+                const raw = JSON.parse(localStorage.getItem(STORAGE_KEY));
+                if (Array.isArray(raw)) {
+                    manualsList = raw.map(m => ({ ...m, contents: m.contents || [] }));
+                }
+            } catch (e) {
+                manualsList = [];
+            }
+        }
+
+        // ฟังก์ชันอัปโหลดข้อมูลทั้งหมดขึ้น Supabase
+        async function syncToSupabase() {
+            const statusEl = document.getElementById('sync-status');
+            statusEl.innerHTML = '<i class="ph-bold ph-spinner animate-spin"></i> กำลังซิงค์...';
+            statusEl.className = 'text-xs font-medium text-amber-500 mr-2 flex items-center gap-1';
+
+            try {
+                const { error } = await supabase
+                    .from('app_data')
+                    .update({ content_json: manualsList })
+                    .eq('id', 1);
+                
+                if (error) {
+                    console.error('Supabase save error:', error);
+                    statusEl.innerHTML = '<i class="ph-bold ph-warning-circle"></i> ซิงค์ไม่สำเร็จ';
+                    statusEl.className = 'text-xs font-medium text-red-500 mr-2 flex items-center gap-1';
+                } else {
+                    statusEl.innerHTML = '<i class="ph-bold ph-cloud-check"></i> ซิงค์แล้ว';
+                    statusEl.className = 'text-xs font-medium text-emerald-500 mr-2 flex items-center gap-1';
+                }
+            } catch (e) {
+                console.error('Network or sync error:', e);
+            }
+        }
+
+        // ฟังก์ชันเมื่อมีการบันทึก/แก้ไขข้อมูล (ปรับปรุงใหม่)
         function persist() {
             try {
+                // เซฟลงเบราว์เซอร์
                 localStorage.setItem(STORAGE_KEY, JSON.stringify(manualsList));
+                // เซฟขึ้นคลาวด์เบื้องหลัง
+                syncToSupabase(); 
                 return true;
             } catch (e) {
                 showMessage('พื้นที่จัดเก็บเต็ม กรุณาลดขนาดหรือจำนวนรูปภาพ', true);
@@ -488,7 +529,6 @@
             return String(str ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
         }
 
-        // Older records stored 'just now' instead of a timestamp
         function toTime(v) {
             const t = Date.parse(v);
             return isNaN(t) ? 0 : t;
@@ -778,6 +818,7 @@
             document.getElementById('manual-submit-btn').textContent = 'บันทึกการแก้ไข';
             document.getElementById('manual-delete-btn').classList.remove('hidden');
             document.getElementById('input-title').value = manual.title;
+            // Legacy placeholder URLs are replaced by the generated orange cover
             const img = manual.image && !manual.image.includes('placehold.co') ? manual.image : '';
             document.getElementById('input-image').value = img;
             document.getElementById('manual-file-name-display').textContent = img ? 'มีรูปภาพเดิม (เลือกไฟล์ใหม่เพื่อเปลี่ยน)' : 'ยังไม่ได้เลือกไฟล์';
@@ -1007,9 +1048,48 @@
             mobileMenuBtn.setAttribute('aria-expanded', 'false');
         }
 
-        // ---------- Init ----------
+        // ---------- App Initialization ----------
         window.addEventListener('hashchange', router);
-        router();
+        
+        async function initApp() {
+            // 1. โหลดข้อมูลจาก LocalStorage เพื่อให้เว็บเปิดปุ๊บแสดงผลได้ทันที
+            loadLocalData();
+            router();
+
+            // 2. ไปดึงข้อมูลล่าสุดจาก Supabase Cloud มาเช็คว่ามีอะไรอัปเดตไหม
+            try {
+                const statusEl = document.getElementById('sync-status');
+                statusEl.innerHTML = '<i class="ph-bold ph-spinner animate-spin"></i> กำลังอัปเดต...';
+                
+                const { data, error } = await supabase
+                    .from('app_data')
+                    .select('content_json')
+                    .eq('id', 1)
+                    .single();
+                
+                if (data && data.content_json) {
+                    // ถ้าดึงข้อมูลจากเน็ตสำเร็จ เอามาทับของเดิม และแสดงผลใหม่
+                    manualsList = data.content_json;
+                    localStorage.setItem(STORAGE_KEY, JSON.stringify(manualsList));
+                    refreshCurrentView();
+                    
+                    statusEl.innerHTML = '<i class="ph-bold ph-cloud-check"></i> ซิงค์แล้ว';
+                    statusEl.className = 'text-xs font-medium text-emerald-500 mr-2 flex items-center gap-1';
+                } else if (error && error.code !== 'PGRST116') { 
+                    // กรณี Error ยกเว้นเคสที่ยังไม่มีข้อมูลแถวที่ 1
+                    console.error('Supabase load error:', error);
+                    statusEl.innerHTML = '<i class="ph-bold ph-warning-circle"></i> ข้อมูลออฟไลน์';
+                    statusEl.className = 'text-xs font-medium text-amber-500 mr-2 flex items-center gap-1';
+                } else {
+                    statusEl.innerHTML = '<i class="ph-bold ph-cloud-check"></i> ซิงค์แล้ว';
+                }
+            } catch (err) {
+                console.error('Network Error:', err);
+            }
+        }
+
+        // เริ่มต้นการทำงานของเว็บ
+        initApp();
     </script>
 </body>
 </html>
